@@ -1,0 +1,220 @@
+[
+  {
+    "table_name": "DPW_DL.Voyages",
+    "primary_keys": [
+      "ROTN"
+    ],
+    "joins": {
+      "DPW_DL.EDW_VOYAGE_BOX_STAT": "DPW_DL.Voyages.ROTN = DPW_DL.EDW_VOYAGE_BOX_STAT.ROTN (1:N)"
+    },
+    "important_filters": {
+      "PORT_CODE": "Only consider PORT_CODE = 'J' (Jebel Ali only)",
+      "VOYAGE_TYPE": "0 = active, 9 = cancelled \u2013 use only active",
+      "START_WORK_DATE": "Start date of vessel operations. Use it for any time/date based filter"
+    },
+    "business_rules": {
+      "fully_completed_vessel": "DISCH_INV_CODE = 3 AND LOAD_INV_CODE = 3 AND MARINE_INV_CODE = 3"
+    },
+    "column_info": {
+      "ROTN": {
+        "description": "Rotation number",
+        "importance": "High"
+      },
+      "VOYAGE_TYPE": {
+        "description": "Vessel status \u2013 0: active, 9: cancelled",
+        "importance": "High"
+      },
+      "LINE_CODE": {
+        "description": "Line ID code of the vessel",
+        "importance": "High"
+      },
+      "ETA_DATE": {
+        "description": "Estimated Time of Arrival",
+        "importance": "Medium"
+      },
+      "BTH_DATE": {
+        "description": "Date when vessel berthed",
+        "importance": "Medium"
+      },
+      "START_WORK_DATE": {
+        "description": "Start date of vessel operations",
+        "importance": "High"
+      },
+      "END_WORK_DATE": {
+        "description": "End date of vessel operations",
+        "importance": "High"
+      },
+      "DISCH_INV_CODE": {
+        "description": "Discharge status \u2013 3 means complete",
+        "importance": "High"
+      },
+      "LOAD_INV_CODE": {
+        "description": "Load status \u2013 3 means complete",
+        "importance": "High"
+      },
+      "MARINE_INV_CODE": {
+        "description": "Marine status \u2013 3 means complete",
+        "importance": "High"
+      },
+      "VOYAGE_CHG_INV_CODE": {
+        "description": "Hatch cover activity status \u2013 3 means complete",
+        "importance": "High"
+      },
+      "PORT_CODE": {
+        "description": "Jebel Ali only (J)",
+        "importance": "High"
+      },
+      "IN_VESS_SERVICE": {
+        "description": "Route code \u2013 valid for container vessels",
+        "importance": "High"
+      },
+      "LAY_BY_VESSEL": {
+        "description": "Y = vessel on hold after ops",
+        "importance": "Medium"
+      },
+      "READY_TO_INVOICE": {
+        "description": "Indicates invoice readiness",
+        "importance": "Medium"
+      },
+      "VESS_CLOSING_DATE": {
+        "description": "Date when vessel was closed/invoiced",
+        "importance": "High"
+      }
+    },
+    "sample_data": [
+      {
+        "ROTN": 140495,
+        "VOYAGE_TYPE": 0,
+        "LINE_CODE": "PET",
+        "ETA_DATE": "2015-11-20",
+        "BTH_DATE": "2015-11-21",
+        "START_WORK_DATE": "2015-11-21",
+        "END_WORK_DATE": "2015-11-22",
+        "DISCH_INV_CODE": 3,
+        "LOAD_INV_CODE": 3,
+        "MARINE_INV_CODE": 3,
+        "VOYAGE_CHG_INV_CODE": 3,
+        "PORT_CODE": "J",
+        "IN_VESS_SERVICE": "MEA4",
+        "LAY_BY_VESSEL": "N",
+        "READY_TO_INVOICE": "Y",
+        "VESS_CLOSING_DATE": "2015-11-23"
+      }
+    ]
+  },
+  {
+    "table_name": "DPW_DL.EDW_VOYAGE_BOX_STAT",
+    "primary_keys": [
+      "ROTN",
+      "BOX_LINE_ID"
+    ],
+    "joins": {
+      "DPW_DL.Voyages": "DPW_DL.EDW_VOYAGE_BOX_STAT.ROTN = DPW_DL.Voyages.ROTN (Many:1)",
+      "DPW_DL.DM_LINES": "DPW_DL.EDW_VOYAGE_BOX_STAT.BOX_LINE_ID = DPW_DL.DM_LINES.LINE_ID (Many:1)"
+    },
+    "column_info": {
+      "YEAR_MTH": {
+        "description": "Year and Month in YYYYMM format, must convert to date format in vertica query",
+        "importance": "High"
+
+      },
+      "BOX_LINE_ID": {
+        "description": "Container Line ID",
+        "importance": "High"
+      },
+      "ROTN": {
+        "description": "Rotation Number \u2013 links to Voyages table",
+        "importance": "High"
+      },
+      "UAE_PORT_ID": {
+        "description": "Always Jebel Ali (filtered)",
+        "importance": "High"
+      },
+      "CONS_CODE": {
+        "description": "Consortium code",
+        "importance": "High"
+      },
+      "TERMINAL_ID": {
+        "description": "Terminal number (1-4)",
+        "importance": "High"
+      },
+      "TYPE": {
+        "description": "Movement type (Import, Export, TS load/discharge)",
+        "importance": "High"
+      },
+      "STATUS": {
+        "description": "Container status (FCL, LCL, MT)",
+        "importance": "High"
+      },
+      "CONTR_LEN": {
+        "description": "Container length (20, 40, 45)",
+        "importance": "High"
+      },
+      "TEUS": {
+        "description": "TEUs handled (aggregated)",
+        "importance": "High"
+      }
+    },
+    "sample_data": [
+      {
+        "YEAR_MTH": 201511,
+        "BOX_LINE_ID": 24,
+        "ROTN": 140495,
+        "UAE_PORT_ID": 1,
+        "CONS_CODE": "UAFDL",
+        "TERMINAL_ID": 1,
+        "TYPE": "TS Discharge",
+        "STATUS": "FCL",
+        "CONTR_LEN": 20,
+        "TEUS": 17
+      },
+      {
+        "YEAR_MTH": 201511,
+        "BOX_LINE_ID": 24,
+        "ROTN": 140495,
+        "UAE_PORT_ID": 1,
+        "CONS_CODE": "UAFDL",
+        "TERMINAL_ID": 1,
+        "TYPE": "TS Discharge",
+        "STATUS": "FCL",
+        "CONTR_LEN": 40,
+        "TEUS": 6
+      }
+    ]
+  },
+  {
+    "table_name": "DPW_DL.DM_LINES",
+    "primary_keys": [
+      "LINE_ID"
+    ],
+    "joins": {
+      "DPW_DL.EDW_VOYAGE_BOX_STAT": "DPW_DL.DM_LINES.LINE_ID = DPW_DL.EDW_VOYAGE_BOX_STAT.BOX_LINE_ID (1:N)"
+    },
+    "column_info": {
+      "LINE_ID": {
+        "description": "Primary key \u2013 unique line identifier",
+        "importance": "High"
+      },
+      "LINE_CODE": {
+        "description": "Short code for the line",
+        "importance": "High"
+      },
+      "LINE_NAME": {
+        "description": "Full name of the shipping line",
+        "importance": "High"
+      }
+    },
+    "sample_data": [
+      {
+        "LINE_ID": 1,
+        "LINE_CODE": "BVC",
+        "LINE_NAME": "BON VOYAGE CO LTD"
+      },
+      {
+        "LINE_ID": 3,
+        "LINE_CODE": "PET",
+        "LINE_NAME": "PETRA MARITIME LTD AMMAN/JORDA"
+      }
+    ]
+  }
+]

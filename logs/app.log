@@ -1,0 +1,23 @@
+2025-08-04 11:03:10,417 WARNING dashboard_app No query provided to /api/generate
+2025-08-04 11:03:10,417 WARNING dashboard_app No query provided to /api/generate
+2025-08-04 11:03:11,020 INFO httpx HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+2025-08-04 11:03:12,535 INFO httpx HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-04 11:03:20,921 INFO httpx HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-04 11:03:24,755 INFO httpx HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-04 11:03:52,834 INFO httpx HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-04 11:03:53,442 INFO dashboard_app Dashboard launched at http://127.0.0.1:38849 for query: Show all vessel rotations
+2025-08-04 11:04:21,621 INFO werkzeug [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.5:5000
+2025-08-04 11:04:21,621 INFO werkzeug [33mPress CTRL+C to quit[0m
+2025-08-04 11:04:25,903 INFO werkzeug 127.0.0.1 - - [04/Aug/2025 11:04:25] "GET / HTTP/1.1" 200 -
+2025-08-04 11:04:26,248 INFO werkzeug 127.0.0.1 - - [04/Aug/2025 11:04:26] "GET /static/mic_icon.png HTTP/1.1" 200 -
+2025-08-04 11:04:26,604 INFO werkzeug 127.0.0.1 - - [04/Aug/2025 11:04:26] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2025-08-04 11:04:29,000 INFO httpx HTTP Request: POST https://api.openai.com/v1/embeddings "HTTP/1.1 200 OK"
+2025-08-04 11:04:30,139 INFO httpx HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-04 11:04:36,840 INFO httpx HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-04 11:04:39,414 INFO httpx HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-04 11:04:59,240 INFO httpx HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2025-08-04 11:04:59,842 INFO dashboard_app Dashboard launched at http://127.0.0.1:55861 for query: Top 10 Shipping Lines Based On Vessel Count
+2025-08-04 11:04:59,842 INFO werkzeug 127.0.0.1 - - [04/Aug/2025 11:04:59] "POST /api/generate HTTP/1.1" 200 -
