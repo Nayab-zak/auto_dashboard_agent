@@ -13,88 +13,89 @@ conn = pyodbc.connect("Driver=Vertica;Server={0};Database={1};UID={2};PWD={3}".f
 def with_joined_cte(inner_query: str) -> str:
     cte = """
     WITH joined_data AS (
-        SELECT v.LINE_CODE AS voyage_line_code, l.LINE_CODE AS line_line_code, l.LINE_NAME, v.START_WORK_DATE
+        SELECT v.LINE_CODE AS voyage_line_code, v.ETA_DATE, v.VOYAGE_TYPE, v.PORT_CODE, l.LINE_CODE AS line_line_code, l.LINE_NAME
         FROM DPW_DL.Voyages v
         INNER JOIN DPW_DL.DM_LINES l ON v.LINE_CODE = l.LINE_CODE
-        WHERE v.PORT_CODE = 'J' AND v.VOYAGE_TYPE = 0
+        WHERE v.VOYAGE_TYPE = 0 AND v.PORT_CODE = 'J'
     )
     """
     return cte + "\n" + inner_query
 
-# KPI 1: Top 10 Shipping Lines by Vessel Count
-inner_query_1 = """
-SELECT line_line_code, LINE_NAME, COUNT(voyage_line_code) AS vessel_count
+# Top 10 Shipping Lines by Vessel Count
+inner_query = """
+SELECT line_line_code, LINE_NAME, COUNT(*) AS vessel_count
 FROM joined_data
 GROUP BY line_line_code, LINE_NAME
 ORDER BY vessel_count DESC
 LIMIT 10
 """
-query_1 = with_joined_cte(inner_query_1)
-df_1 = pd.read_sql(query_1, conn)
-fig1 = px.bar(df_1, x='LINE_NAME', y='vessel_count', title='Top 10 Shipping Lines by Vessel Count', color='LINE_NAME', color_discrete_sequence=px.colors.qualitative.Set1)
+query = with_joined_cte(inner_query)
+df_top_lines = pd.read_sql(query, conn)
+fig_top_lines = px.bar(df_top_lines, x='LINE_NAME', y='vessel_count', title='Top 10 Shipping Lines by Vessel Count', color='LINE_NAME', color_discrete_sequence=px.colors.qualitative.Set1)
 
-# KPI 2: Vessel Count Distribution by Shipping Line
-inner_query_2 = """
-SELECT line_line_code, LINE_NAME, COUNT(voyage_line_code) AS vessel_count
+# Vessel Count Distribution by Line
+inner_query = """
+SELECT line_line_code, LINE_NAME, COUNT(*) AS vessel_count
 FROM joined_data
 GROUP BY line_line_code, LINE_NAME
 """
-query_2 = with_joined_cte(inner_query_2)
-df_2 = pd.read_sql(query_2, conn)
-fig2 = px.pie(df_2, values='vessel_count', names='LINE_NAME', title='Vessel Count Distribution by Shipping Line', color_discrete_sequence=px.colors.qualitative.Pastel1)
+query = with_joined_cte(inner_query)
+df_vessel_distribution = pd.read_sql(query, conn)
+fig_vessel_distribution = px.pie(df_vessel_distribution, names='LINE_NAME', values='vessel_count', title='Vessel Count Distribution by Line')
 
-# KPI 3: Monthly Vessel Count for Top Shipping Lines
-inner_query_3 = """
-SELECT TO_DATE(CAST(EXTRACT(YEAR FROM START_WORK_DATE) AS VARCHAR) || LPAD(CAST(EXTRACT(MONTH FROM START_WORK_DATE) AS VARCHAR), 2, '0') || '01', 'YYYYMMDD') AS month, LINE_NAME, COUNT(voyage_line_code) AS vessel_count
+# Monthly Vessel Count for Top Lines
+inner_query = """
+SELECT line_line_code, LINE_NAME, DATE_TRUNC('month', CAST(ETA_DATE AS TIMESTAMP)) AS month, COUNT(*) AS vessel_count
 FROM joined_data
-GROUP BY month, LINE_NAME
+GROUP BY line_line_code, LINE_NAME, month
 ORDER BY month
 LIMIT 100
 """
-query_3 = with_joined_cte(inner_query_3)
-df_3 = pd.read_sql(query_3, conn)
-fig3 = px.line(df_3, x='month', y='vessel_count', color='LINE_NAME', title='Monthly Vessel Count for Top Shipping Lines', color_discrete_sequence=px.colors.qualitative.Plotly)
+query = with_joined_cte(inner_query)
+df_monthly_vessel_count = pd.read_sql(query, conn)
+fig_monthly_vessel_count = px.line(df_monthly_vessel_count, x='month', y='vessel_count', color='LINE_NAME', title='Monthly Vessel Count for Top Lines', color_discrete_sequence=px.colors.qualitative.Pastel1)
 
-# KPI 4: Average Vessels per Shipping Line
-inner_query_4 = """
-SELECT AVG(vessel_count) AS avg_vessels
+# Average Vessels per Line
+inner_query = """
+SELECT AVG(vessel_count) AS avg_vessels_per_line
 FROM (
-    SELECT line_line_code, COUNT(voyage_line_code) AS vessel_count
+    SELECT line_line_code, COUNT(*) AS vessel_count
     FROM joined_data
     GROUP BY line_line_code
 ) AS subquery
 """
-query_4 = with_joined_cte(inner_query_4)
-df_4 = pd.read_sql(query_4, conn)
-avg_vessels = int(df_4['avg_vessels'].iloc[0])
+query = with_joined_cte(inner_query)
+df_avg_vessels = pd.read_sql(query, conn)
+# Handle potential NULL/None values safely
+avg_vessels_value = df_avg_vessels['avg_vessels_per_line'].iloc[0]
+avg_vessels_per_line = int(avg_vessels_value) if avg_vessels_value is not None else 0
 
-# KPI 5: Top Shipping Lines by Vessel Count and TEUs
-inner_query_5 = """
-SELECT line_line_code, LINE_NAME, COUNT(voyage_line_code) AS vessel_count
+# Vessel Count by Voyage Type
+inner_query = """
+SELECT VOYAGE_TYPE, COUNT(*) AS vessel_count
 FROM joined_data
-GROUP BY line_line_code, LINE_NAME
-ORDER BY vessel_count DESC
-LIMIT 10
+GROUP BY VOYAGE_TYPE
 """
-query_5 = with_joined_cte(inner_query_5)
-df_5 = pd.read_sql(query_5, conn)
+query = with_joined_cte(inner_query)
+df_vessel_by_voyage_type = pd.read_sql(query, conn)
+fig_vessel_by_voyage_type = px.bar(df_vessel_by_voyage_type, x='VOYAGE_TYPE', y='vessel_count', title='Vessel Count by Voyage Type', color='VOYAGE_TYPE', color_discrete_sequence=px.colors.qualitative.Plotly)
 
 # Layout
 st.header("DP World – Executive KPI Dashboard")
 
 col1, col2 = st.columns(2)
 with col1:
-    st.metric(label="Average Vessels per Shipping Line", value=avg_vessels)
+    st.metric("Average Vessels per Line", avg_vessels_per_line)
 with col2:
-    st.dataframe(df_5)
+    st.plotly_chart(fig_vessel_distribution, use_container_width=True)
 
 col1, col2, col3 = st.columns(3)
 with col1:
-    st.plotly_chart(fig1, use_container_width=True)
+    st.plotly_chart(fig_top_lines, use_container_width=True)
 with col2:
-    st.plotly_chart(fig2, use_container_width=True)
+    st.plotly_chart(fig_monthly_vessel_count, use_container_width=True)
 with col3:
-    st.plotly_chart(fig3, use_container_width=True)
+    st.plotly_chart(fig_vessel_by_voyage_type, use_container_width=True)
 
 conn.close()
 # ───────── END OF created_dashboard.py ─────────

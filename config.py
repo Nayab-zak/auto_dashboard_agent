@@ -12,10 +12,10 @@ VERTICA_USER = os.getenv("VERTICA_USER")
 VERTICA_PASSWORD = os.getenv("VERTICA_PASSWORD")
 
 VERTICA_CONFIG = {
-    "server": "jxdlpap-cls",
-    "database": "DPWDA",
-    "uid": "DPW_DL_RW",
-    "pwd": "GISA_1RCD_3LMD"
+    "server": VERTICA_HOST,
+    "database": VERTICA_DB,
+    "uid": VERTICA_USER,
+    "pwd": VERTICA_PASSWORD
 }
 
 VERTICA_TABLE_VOYAGES = os.getenv("VERTICA_TABLE_VOYAGES")

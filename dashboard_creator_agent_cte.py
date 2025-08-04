@@ -46,6 +46,9 @@ You must:
 • DO NOT use SELECT * — always be explicit and filtered.
 • DO NOT reference columns outside the CTE that were not included in its SELECT clause.
 • Always use aggregations (SUM, AVG, COUNT, etc.), GROUP BY, filters (WHERE, LIMIT), or ranked selections to reduce data volume.
+• ALWAYS cast date/time columns to the appropriate type before using date functions: 
+  • Use CAST(date_column AS TIMESTAMP) with DATE_TRUNC and other date functions
+  • Example: DATE_TRUNC('month', CAST(ETA_DATE AS TIMESTAMP))
 
 Your tasks:
 

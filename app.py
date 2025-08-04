@@ -5,6 +5,7 @@ One-page query-to-dashboard service
 """
 import os, subprocess, time, socket, pickle, pandas as pd
 from flask import Flask, render_template, request, jsonify
+from flask_cors import CORS
 import re, textwrap
 # ── your agents ───────────────────────────────────────────────────────────────
 from table_selector_agent_prod import recommend_table 
@@ -16,7 +17,7 @@ import json
 from utils.logger import logger
 # ──────────────────────────────────────────────────────────────────────────────
 
-DASHBOARD_MODULE = "created_dashboard.py"
+DASHBOARD_MODULE = os.path.join(os.path.dirname(__file__), "created_dashboard.py")
 STREAMLIT_CMD = [
     "streamlit", "run", DASHBOARD_MODULE,
     "--server.headless", "true",
@@ -25,7 +26,11 @@ STREAMLIT_CMD = [
 ]
 PORT_TIMEOUT = 15                     # seconds to wait for Streamlit
 
+from flask_cors import CORS
+
 app = Flask(__name__, template_folder="templates", static_folder="static")
+# Enable CORS for all routes
+CORS(app)
 _running = {}                         # url: Popen
 
 # ───────────── helpers ─────────────
@@ -35,55 +40,167 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 def _wait(port: int, timeout: int = PORT_TIMEOUT) -> bool:
+    """
+    Wait for a port to become available with improved connection checking.
+    Also tries to validate if the service is actually ready by checking HTTP response.
+    """
     start = time.time()
     while time.time() - start < timeout:
+        # First check if port is open using socket
         with socket.socket() as s:
             s.settimeout(1)
             try:
                 s.connect(("127.0.0.1", port))
-                return True
-            except OSError:
-                time.sleep(.3)
+                logger.debug(f"Port {port} is open, checking if service is ready...")
+                
+                # Give Streamlit a moment to initialize fully
+                time.sleep(2)
+                
+                # Try a simple HTTP request to see if Streamlit is responding
+                try:
+                    import urllib.request
+                    url = f"http://127.0.0.1:{port}/"
+                    with urllib.request.urlopen(url, timeout=2) as response:
+                        if response.status == 200:
+                            logger.info(f"Service on port {port} is fully ready!")
+                            return True
+                        else:
+                            logger.debug(f"Service on port {port} responded with status {response.status}, waiting...")
+                except Exception as http_err:
+                    logger.debug(f"HTTP check failed for port {port}: {str(http_err)}, but port is open. Considering ready.")
+                    # If HTTP check fails but socket connected, consider it ready anyway
+                    return True
+                
+            except (OSError, ConnectionRefusedError) as e:
+                logger.debug(f"Waiting for port {port} to be available: {str(e)}")
+                time.sleep(1)
+    
+    logger.warning(f"Timeout waiting for port {port} after {timeout} seconds")
     return False
 
 def _build_dashboard(q: str) -> Union[str, None]:
-    tables = recommend_table(q)
-    print("Selected Tables: ", tables)
-    if tables is None:
-        return None  # ← signal to caller that no table was selected
+    try:
+        logger.info(f"Building dashboard for query: {q}")
+        tables = recommend_table(q)
+        logger.info(f"Selected Tables: {tables}")
+        if tables is None:
+            return None  # ← signal to caller that no table was selected
 
-    with open("agent1_schema_metadata_with_samples.json", "r") as f:
-        full_schema = json.load(f)
+        # Use absolute path for schema file
+        schema_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent1_schema_metadata_with_samples.json")
+        logger.info(f"Loading schema from: {schema_path}")
+        
+        if not os.path.exists(schema_path):
+            logger.error(f"Schema file not found at {schema_path}")
+            raise FileNotFoundError(f"Schema file not found at {schema_path}")
+            
+        with open(schema_path, "r") as f:
+            full_schema = json.load(f)
+        
+        # Filter schema only for the recommended tables
+        filtered_schema = [table for table in full_schema if table["table_name"] in tables]
+        
+        kpis = plan_kpis(q, tables)
+        logger.info(f"KPIs planned: {kpis}")
+        
+        # Use absolute path for KPI file
+        kpi_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "kpi_list.pkl")
+        os.makedirs(os.path.dirname(kpi_path), exist_ok=True)
+        
+        with open(kpi_path, "wb") as fp:
+            pickle.dump(kpis, fp)
 
-    # Filter schema only for the recommended tables
-    filtered_schema = [table for table in full_schema if table["table_name"] in tables]
+        query = generate_sql(kpis, filtered_schema)
+        logger.info(f"SQL generated: {query[:100]}...")
 
-    kpis = plan_kpis(q, tables)
-    print("KPIS:  ", kpis)
-    with open("kpi_list.pkl", "wb") as fp:
-        pickle.dump(kpis, fp)
+        code = generate_dashboard_code(kpis, query, filtered_schema)
+        code = _strip_markdown_fence(code)
 
-    query = generate_sql( kpis, filtered_schema)
-    print('query: ', query)
-
-    code = generate_dashboard_code(kpis, query, filtered_schema )
-    code = _strip_markdown_fence(code)
-
-    path = write_dashboard_file(code)
-    return os.path.abspath(path)
+        dashboard_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), DASHBOARD_MODULE)
+        path = write_dashboard_file(code, dashboard_path)
+        logger.info(f"Dashboard written to: {path}")
+        return os.path.abspath(path)
+    except Exception as e:
+        logger.exception(f"Error building dashboard: {str(e)}")
+        raise
 
 
 def _launch(path: str) -> str:
-    port = _free_port()
-    cmd  = STREAMLIT_CMD + ["--server.port", str(port)]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
-                                 stderr=subprocess.PIPE, text=True)
-    if not _wait(port):
-        proc.terminate()
-        raise RuntimeError("Streamlit failed to start.")
-    url = f"http://127.0.0.1:{port}"
-    _running[url] = proc
-    return url
+    max_retries = 3
+    last_proc = None
+    last_error = None
+    
+    # Validate path exists
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Dashboard file not found at {path}")
+    
+    for attempt in range(max_retries):
+        port = _free_port()
+        cmd = STREAMLIT_CMD + ["--server.port", str(port)]
+        logger.info(f"Attempt {attempt+1}/{max_retries}: Launching Streamlit on port {port} with command: {' '.join(cmd)}")
+        
+        # Create logs directory if it doesn't exist
+        logs_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'logs')
+        os.makedirs(logs_dir, exist_ok=True)
+        
+        # Log streamlit output to file for debugging
+        log_file = os.path.join(logs_dir, f"streamlit_launch_{port}.log")
+        with open(log_file, 'w') as f:
+            f.write(f"Launch command: {' '.join(cmd)}\n\n")
+        
+        try:
+            proc = subprocess.Popen(
+                cmd, 
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, 
+                text=True,
+                # Make the dashboard accessible from other machines on the network
+                env=dict(os.environ, STREAMLIT_SERVER_HEADLESS="true")
+            )
+            last_proc = proc
+            
+            # Start monitoring stdout/stderr in separate threads
+            def log_output(stream, prefix, log_file):
+                for line in stream:
+                    with open(log_file, 'a') as f:
+                        f.write(f"{prefix}: {line}")
+                    if "error" in line.lower() or "exception" in line.lower():
+                        logger.error(f"Streamlit {prefix}: {line.strip()}")
+                    else:
+                        logger.debug(f"Streamlit {prefix}: {line.strip()}")
+            
+            import threading
+            stdout_thread = threading.Thread(target=log_output, args=(proc.stdout, "STDOUT", log_file))
+            stderr_thread = threading.Thread(target=log_output, args=(proc.stderr, "STDERR", log_file))
+            stdout_thread.daemon = True
+            stderr_thread.daemon = True
+            stdout_thread.start()
+            stderr_thread.start()
+            
+            if _wait(port):
+                url = f"http://127.0.0.1:{port}"
+                _running[url] = proc
+                logger.info(f"Streamlit successfully launched at {url}")
+                return url
+            else:
+                last_error = f"Timed out waiting for Streamlit on port {port}"
+                proc.terminate()
+                logger.warning(f"Attempt {attempt+1} failed: {last_error}")
+        except Exception as e:
+            last_error = str(e)
+            logger.exception(f"Error launching Streamlit (attempt {attempt+1}): {last_error}")
+    
+    # If all retries fail
+    err_output = ""
+    if last_proc:
+        try:
+            err_output = last_proc.stderr.read() if last_proc.stderr else ""
+        except:
+            err_output = "Could not read process error output"
+    
+    error_msg = f"All {max_retries} attempts to launch Streamlit failed. Last error: {last_error}. Process output: {err_output}"
+    logger.error(error_msg)
+    raise RuntimeError(error_msg)
 
 def _strip_markdown_fence(text: str) -> str:
     """
@@ -104,6 +221,15 @@ def _strip_markdown_fence(text: str) -> str:
 @app.route("/")
 def index():
     return render_template("index.html")
+    
+@app.route("/health")
+def health_check():
+    """Health check endpoint for monitoring"""
+    return jsonify({
+        "status": "ok",
+        "app": "dashboard_agent",
+        "running_dashboards": len(_running)
+    })
 
 # AJAX endpoint (JS)
 @app.route("/api/generate", methods=["POST"])
@@ -148,4 +274,16 @@ def stop():
     return f"Stopped {url}" if proc else "No such dashboard."
 
 if __name__ == "__main__":
-    app.run("0.0.0.0", 5000, debug=True, use_reloader=False)
+    try:
+        # Make sure needed directories exist
+        os.makedirs(os.path.join(os.path.dirname(__file__), 'logs'), exist_ok=True)
+        os.makedirs(os.path.join(os.path.dirname(__file__), 'temp', 'data'), exist_ok=True)
+        
+        # Log app start
+        logger.info(f"Starting dashboard agent app on 0.0.0.0:5000")
+        
+        # Use threaded=True to handle concurrent requests better
+        app.run("0.0.0.0", 5000, debug=True, use_reloader=False, threaded=True)
+    except Exception as e:
+        logger.exception(f"Error starting Flask app: {str(e)}")
+        print(f"Error starting Flask app: {str(e)}")  # Also print to console in case logging fails

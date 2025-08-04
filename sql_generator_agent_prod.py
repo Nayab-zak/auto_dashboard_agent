@@ -99,6 +99,9 @@ Special Data Handling:
   This turns values like 202407 into a proper DATE: '2024-07-01'.
 
 - Never use `year_mth` as-is in WHERE or GROUP BY clauses when working with dates — always cast it to a DATE first.
+- When using date functions like DATE_TRUNC, always explicitly cast date columns to TIMESTAMP:
+  - Example: DATE_TRUNC('month', CAST(ETA_DATE AS TIMESTAMP))
+  - Vertica requires proper type casting for date functions.
 
 The `TERMINAL_ID` column is an integer but must be treated as a **categorical string** for reporting.
     Always convert it to a string prefixed with `'T'` like this:
