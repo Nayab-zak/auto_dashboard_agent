@@ -18,9 +18,8 @@ import os
 import json
 import numpy as np
 from typing import List
-from openai import OpenAI
-from openai.types.chat import ChatCompletion
-from config import OPENAI_API_KEY
+from utils.llm_client import get_llm_response
+from config import LLM_PROVIDER
 
 # ------------------------------------------------------------------------------
 # Configuration
@@ -49,13 +48,16 @@ TABLE_META = {
 # ------------------------------------------------------------------------------
 # Embedding and LLM setup
 # ------------------------------------------------------------------------------
-client = OpenAI(api_key=OPENAI_API_KEY)
+# Note: For now keeping OpenAI embeddings even when using Ollama for chat
+# You can replace this with local embeddings if needed
+from openai import OpenAI
+client_embedding = OpenAI(api_key=os.getenv("OPENAI_API_KEY")) if LLM_PROVIDER == "openai" else OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 def _cosine(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b)))
 
 def _embed(texts: List[str]) -> List[np.ndarray]:
-    res = client.embeddings.create(model=EMBED_MODEL, input=texts)
+    res = client_embedding.embeddings.create(model=EMBED_MODEL, input=texts)
     return [np.array(e.embedding, dtype="float32") for e in res.data]
 
 TABLE_EMB: List[np.ndarray] = _embed([

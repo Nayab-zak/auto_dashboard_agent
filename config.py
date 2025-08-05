@@ -4,7 +4,15 @@ from dotenv import load_dotenv
 load_dotenv()
 import os
 
+# OpenAI Configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+
+# LLM Provider Configuration
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")  # default to openai
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3-groq-tool-use:8b")
+
+# Vertica Database Configuration
 VERTICA_HOST = os.getenv("VERTICA_HOST")
 VERTICA_PORT = os.getenv("VERTICA_PORT")
 VERTICA_DB = os.getenv("VERTICA_DB")
