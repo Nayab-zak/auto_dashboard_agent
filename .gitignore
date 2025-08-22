@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Editors/IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Environment/Secrets
+.env
+*.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs/Debug
+*.log
+*.pkl
+debugg/
+
+# Generated artifacts
+created_dashboard.py
+deprecated/*.pkl
+
+# Streamlit cache
+.streamlit/
