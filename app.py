@@ -11,9 +11,10 @@ from table_selector_agent_prod import recommend_table
 from kpi_planner_agent_prod import plan_kpis
 from sql_generator_agent_prod import generate_sql
 from dashboard_creator_agent_cte import generate_dashboard_code, write_dashboard_file
-from typing import Union
+from typing import Union, List
 import json
 from pathlib import Path
+from config import DEBUG_DIR
 # ──────────────────────────────────────────────────────────────────────────────
 
 DASHBOARD_MODULE = "created_dashboard.py"
@@ -30,6 +31,7 @@ _running = {}                         # url: Popen
 
 # Absolute base dir of this app.py
 BASE_DIR = Path(__file__).resolve().parent
+DBG_DIR = BASE_DIR / DEBUG_DIR
 
 # Clean old generated files at startup
 def _clean_generated_artifacts():
@@ -49,14 +51,14 @@ def _clean_generated_artifacts():
         print(f"[Startup] Could not remove deprecated/kpi.pkl: {e}")
     # Remove previous SQL debug artifacts
     try:
-        dbg_dir = BASE_DIR / "debugg"
-        for fname in ("sql.pkl", "sql_used.pkl"):
-            f = dbg_dir / fname
+        DBG_DIR.mkdir(parents=True, exist_ok=True)
+        for fname in ("sql.pkl", "sql_used.pkl", "sql_all.pkl", "kpi_error.log"):
+            f = DBG_DIR / fname
             if f.exists():
                 f.unlink()
                 print(f"[Startup] Removed old {f}")
     except Exception as e:
-        print(f"[Startup] Could not remove SQL debug files: {e}")
+        print(f"[Startup] Could not remove SQL/KPI debug files: {e}")
 
 # ───────────── helpers ─────────────
 def _free_port() -> int:
@@ -95,18 +97,16 @@ def _build_dashboard(q: str) -> Union[str, None]:
         kpis = plan_kpis(q, tables)
     except Exception as e:
         # Ensure debug directory exists and persist error for diagnosis
-        debug_dir = BASE_DIR / "debugg"
-        debug_dir.mkdir(parents=True, exist_ok=True)
-        err_file = debug_dir / "kpi_error.log"
+        DBG_DIR.mkdir(parents=True, exist_ok=True)
+        err_file = DBG_DIR / "kpi_error.log"
         err_file.write_text(f"KPI planning failed: {e}", encoding="utf-8")
         print(f"KPI planning failed. See {err_file}")
         raise
 
     print("KPIS:  ", kpis)
     # Ensure debug directory exists and save KPIs for debugging/inspection (absolute path)
-    debug_dir = BASE_DIR / "debugg"
-    debug_dir.mkdir(parents=True, exist_ok=True)
-    kpi_pkl = debug_dir / "kpi.pkl"
+    DBG_DIR.mkdir(parents=True, exist_ok=True)
+    kpi_pkl = DBG_DIR / "kpi.pkl"
     with open(kpi_pkl, "wb") as fp:
         pickle.dump(kpis, fp)
     print(f"Saved KPIs to {kpi_pkl.resolve()}")
@@ -114,15 +114,24 @@ def _build_dashboard(q: str) -> Union[str, None]:
     query = generate_sql( kpis, filtered_schema)
     print('query: ', query)
 
-    # Persist final SQL used (string or list) for debugging
-    try:
-        with open(debug_dir / "sql_used.pkl", "wb") as fp:
-            pickle.dump(query, fp)
-        print(f"Saved final SQL to {(debug_dir / 'sql_used.pkl').resolve()}")
-    except Exception as e:
-        print("[Warn] Failed to persist sql_used.pkl:", e)
+    # Normalize to list of SQL strings for dashboard generation
+    sql_list: List[str]
+    if isinstance(query, list):
+        sql_list = [q for q in query if isinstance(q, str) and q.strip()]
+    else:
+        sql_list = [query] if isinstance(query, str) and query.strip() else []
 
-    code = generate_dashboard_code(kpis, query, filtered_schema )
+    # Persist final SQL artifacts
+    try:
+        with open(DBG_DIR / "sql_used.pkl", "wb") as fp:
+            pickle.dump(sql_list[0] if sql_list else "", fp)
+        with open(DBG_DIR / "sql_all.pkl", "wb") as fp:
+            pickle.dump(sql_list, fp)
+        print(f"Saved final SQL to {(DBG_DIR / 'sql_used.pkl').resolve()} and sql_all.pkl")
+    except Exception as e:
+        print("[Warn] Failed to persist SQL pickles:", e)
+
+    code = generate_dashboard_code(kpis, sql_list, filtered_schema )
     code = _strip_markdown_fence(code)
 
     # Write dashboard file into project directory so we know where it is

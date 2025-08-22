@@ -10,7 +10,7 @@ from pathlib import Path
 from openai import OpenAI
 import pickle
 
-from config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_TIMEOUT, LLM_MODEL, LLM_TOP_P, LLM_PRESENCE_PENALTY, LLM_FREQUENCY_PENALTY, LLM_SAMPLING_TOP_K, LLM_REPETITION_PENALTY
+from config import OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_TIMEOUT, LLM_MODEL, LLM_TOP_P, LLM_PRESENCE_PENALTY, LLM_FREQUENCY_PENALTY, LLM_SAMPLING_TOP_K, LLM_REPETITION_PENALTY, DEBUG_DIR
 
 _BASE_DIR = Path(__file__).resolve().parent
 SCHEMA_JSON_PATH = str(_BASE_DIR / "agent1_schema_metadata_with_samples.json")
@@ -43,7 +43,57 @@ def _valid(sql: str, tables: List[str], col_map: Dict[str, List[str]]) -> bool:
         if cols:
             if not any(re.search(rf"\b{re.escape(col)}\b", sql, re.I) for col in cols):
                 return False
+    # Basic alias mismatch: if SELECT lists aliased expression, ensure outer references match alias or raw name
     return True
+
+
+def _extract_select_aliases(sql: str) -> List[str]:
+    # crude: capture aliases in top-level SELECT ... AS alias, alias without AS, and CTE column list
+    aliases: List[str] = []
+    # FROM start
+    m = re.search(r"^\s*select\s+(.*?)\s+from\s", sql, re.I | re.S)
+    if m:
+        sel = m.group(1)
+        # split on commas not within parentheses
+        parts = re.split(r",(?=(?:[^()]*\([^()]*\))*[^()]*$)", sel)
+        for p in parts:
+            # ... AS alias
+            as_m = re.search(r"\bas\s+([\w\$#]+)\b", p, re.I)
+            if as_m:
+                aliases.append(as_m.group(1))
+                continue
+            # ... expr alias (without AS) -> last token if not function call
+            plain_m = re.findall(r"\b([A-Za-z_][\w$#]*)\b", p)
+            if plain_m:
+                aliases.append(plain_m[-1])
+    # CTE column list: with cte(alias1, alias2) as (
+    for cte_cols in re.findall(r"with\s+[\w$#]+\s*\(([^)]*)\)\s*as\s*\(", sql, re.I):
+        aliases.extend([c.strip() for c in cte_cols.split(',') if c.strip()])
+    return list(dict.fromkeys(aliases))
+
+
+def _outer_refs_after_cte(sql: str) -> List[str]:
+    # capture select of outer query if there is a closing ) followed by select
+    m = re.search(r"\)\s*select\s+(.*?)\s+from\s", sql, re.I | re.S)
+    if not m:
+        return []
+    sel = m.group(1)
+    tokens = re.findall(r"\b([A-Za-z_][\w$#]*)\b", sel)
+    return list(dict.fromkeys(tokens))
+
+
+def _alias_mismatch_notes(sql: str) -> str:
+    aliases = _extract_select_aliases(sql)
+    outer = _outer_refs_after_cte(sql)
+    if not outer:
+        return ""
+    unknown = [t for t in outer if t.upper() not in {"SELECT", "AS", "DISTINCT"} and t not in aliases]
+    if unknown:
+        return (
+            "Outer query references columns not present in CTE output: " + ", ".join(unknown) + ". "
+            "Either add these names to the inner SELECT list or reference the actual alias names."
+        )
+    return ""
 
 
 def _missing_reasons(sql_list: List[str], tables: List[str], col_map: Dict[str, List[str]]) -> str:
@@ -54,12 +104,15 @@ def _missing_reasons(sql_list: List[str], tables: List[str], col_map: Dict[str, 
         miss_tbl = [t for t in tables if not re.search(rf"\b{re.escape(t)}\b", sql, re.I)]
         miss_cols = {t: [c for c in cols if not re.search(rf"\b{re.escape(c)}\b", sql, re.I)] for t, cols in col_map.items()}
         miss_cols = {t: cs for t, cs in miss_cols.items() if cs}
-        if miss_tbl or miss_cols:
+        alias_note = _alias_mismatch_notes(sql)
+        if miss_tbl or miss_cols or alias_note:
             msg = f"Query {idx}: "
             if miss_tbl:
                 msg += f"missing tables {miss_tbl}. "
             if miss_cols:
-                msg += f"missing columns {miss_cols}."
+                msg += f"missing columns {miss_cols}. "
+            if alias_note:
+                msg += alias_note
             reasons.append(msg)
     return "\n".join(reasons) or "Validation failed for unknown reasons."
 
@@ -251,7 +304,7 @@ def _generate_sql_string(tables: List[str], col_map: Dict[str, List[str]], kpi_l
             # Print and persist the parsed SQL for debugging
             try:
                 print("[SQLGenerator] Parsed sql_result:", sql_result)
-                debug_dir = _BASE_DIR / "debugg"
+                debug_dir = _BASE_DIR / DEBUG_DIR
                 debug_dir.mkdir(parents=True, exist_ok=True)
                 with open(debug_dir / "sql.pkl", "wb") as fp:
                     pickle.dump(sql_result, fp)
@@ -260,17 +313,28 @@ def _generate_sql_string(tables: List[str], col_map: Dict[str, List[str]], kpi_l
         except Exception:
             sql_result = []
 
-        if all(_valid(q, tables, col_map) for q in sql_result):
+        # Validate; also compute alias mismatch notes to guide retries
+        all_valid = True
+        alias_notes: List[str] = []
+        for q in sql_result:
+            if not _valid(q, tables, col_map):
+                all_valid = False
+            note = _alias_mismatch_notes(q)
+            if note:
+                alias_notes.append(note)
+        if all_valid and not alias_notes:
             return sql_result if len(sql_result) > 1 else sql_result[0]
 
         if attempt < MAX_RETRIES:
             # Provide targeted feedback with what is missing
             details = _missing_reasons(sql_result, tables, col_map)
+            if alias_notes:
+                details = (details + "\n" if details else "") + "Alias issues: " + "; ".join(set(alias_notes))
             messages.append(
                 {
                     "role": "assistant",
                     "content": (
-                        "❌ SQL invalid. Fix the issues and return ONLY JSON {\"sql\": <string or list>} with: "
+                        "❌ SQL invalid. Fix and return ONLY JSON {\"sql\": <string or list>}. "
                         f"Tables required: {tables}. Columns required per table: {col_map}.\n"
                         f"Problems detected: {details}"
                     ),

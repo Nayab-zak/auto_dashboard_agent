@@ -5,7 +5,7 @@ import os
 import re
 import textwrap
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
 import pandas as pd
 from openai import OpenAI
@@ -49,16 +49,30 @@ def _sanitize_sql_in_triple_quoted_strings(code: str) -> str:
     return re.sub(pattern, lambda m: _fix(m), code)
 
 
+def _ensure_list_sql(sql_or_list: Union[str, List[str]]) -> List[str]:
+    if isinstance(sql_or_list, list):
+        return [s for s in sql_or_list if isinstance(s, str) and s.strip()]
+    return [sql_or_list] if isinstance(sql_or_list, str) and sql_or_list.strip() else []
+
+
 def generate_dashboard_code(
     kpi_list: List[Dict[str, Any]],
-    creation_sql: str,
+    creation_sql: Union[str, List[str]],
     filtered_schema: List[Dict[str, Any]],
     model: str = MODEL_NAME,
     temperature: float = 0.2,
     max_tokens: int = 2000,
 ) -> str:
     schema_str = json.dumps(filtered_schema, indent=2)
-    prompt = SYSTEM_PROMPT.replace("{{creation_sql}}", creation_sql.strip()).replace("{{table_schema_block}}", f"<table_schema>\n{schema_str}\n</table_schema>")
+    sql_list = _ensure_list_sql(creation_sql)
+
+    # If multiple queries present, provide them as indexed blocks; otherwise keep single placeholder
+    if len(sql_list) <= 1:
+        sql_block = (sql_list[0] if sql_list else "").strip()
+        prompt = SYSTEM_PROMPT.replace("{{creation_sql}}", sql_block).replace("{{table_schema_block}}", f"<table_schema>\n{schema_str}\n</table_schema>")
+    else:
+        combined = "\n\n".join([f"-- Query {i+1}\n{q.strip()}" for i, q in enumerate(sql_list)])
+        prompt = SYSTEM_PROMPT.replace("{{creation_sql}}", combined).replace("{{table_schema_block}}", f"<table_schema>\n{schema_str}\n</table_schema>")
 
     messages = [
         {"role": "system", "content": prompt},
@@ -66,7 +80,7 @@ def generate_dashboard_code(
             "role": "user",
             "content": (
                 f"<kpis>\n{kpi_list}\n</kpis>\n\n"
-                f"<creation_sql>\n{creation_sql}\n</creation_sql>"
+                f"<creation_sql>\n{combined if len(sql_list) > 1 else sql_block}\n</creation_sql>"
             ),
         },
     ]

@@ -40,6 +40,7 @@ from config import (
     LLM_FREQUENCY_PENALTY,
     LLM_SAMPLING_TOP_K,
     LLM_REPETITION_PENALTY,
+    DEBUG_DIR,
 )
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -71,7 +72,8 @@ def _cosine(a: np.ndarray, b: np.ndarray) -> float:
 
 def _embed_openai(texts: List[str]) -> List[np.ndarray]:
     res = client.embeddings.create(model=EMBED_MODEL, input=texts)
-    return [np.array(e.embedding, dtype="float32") for e in res.data]
+    import numpy as _np
+    return [ _np.array(e.embedding, dtype="float32") for e in res.data ]
 
 
 def _embed_local_st(texts: List[str]) -> List[np.ndarray]:
@@ -84,12 +86,19 @@ def _embed_local_st(texts: List[str]) -> List[np.ndarray]:
     model = SentenceTransformer(local_model)
     emb = model.encode(texts, normalize_embeddings=True, convert_to_numpy=True)
     # Ensure list[np.ndarray]
-    return [np.array(v, dtype="float32") for v in emb]
+    import numpy as _np
+    return [_np.array(v, dtype="float32") for v in emb]
 
 
 def _embed(texts: List[str]) -> List[np.ndarray]:
-    """Always use local sentence-transformers for embeddings (no API call)."""
-    return _embed_local_st(texts)
+    """Try server embeddings unless USE_LOCAL_EMBEDDINGS is true; fallback to local on failure."""
+    if USE_LOCAL_EMBEDDINGS:
+        return _embed_local_st(texts)
+    try:
+        return _embed_openai(texts)
+    except Exception as e:
+        print("[TableSelector] Server embeddings failed; falling back to local ST:", e)
+        return _embed_local_st(texts)
 
 
 # Lazy cache of table embeddings to avoid failing at import time
@@ -217,6 +226,12 @@ def _llm_select_table(question: str, sims: List[float], *, max_retries: int = 2)
         ),
     })
 
+    dbg_dir = BASE_DIR / DEBUG_DIR
+    try:
+        dbg_dir.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
     for attempt in range(max_retries + 1):
         extra_kwargs = {
             "top_p": LLM_TOP_P,
@@ -237,11 +252,20 @@ def _llm_select_table(question: str, sims: List[float], *, max_retries: int = 2)
         content = (resp.choices[0].message.content or "").strip()
         # Debug print to trace failures
         print("[TableSelector] Raw LLM content:", content[:500])
+        # Persist content per attempt
+        try:
+            (dbg_dir / f"table_selector_raw_attempt{attempt}.txt").write_text(content, encoding="utf-8")
+        except Exception:
+            pass
         try:
             parsed = json.loads(_extract_json_object(content))
             tables = parsed.get("table") or parsed.get("tables") or parsed.get("table_names") or []
             valid_tables = [t for t in tables if t in TABLE_NAMES]
             if valid_tables:
+                try:
+                    (dbg_dir / f"table_selector_parsed_attempt{attempt}.json").write_text(json.dumps({"table": valid_tables}, indent=2), encoding="utf-8")
+                except Exception:
+                    pass
                 return valid_tables
         except Exception:
             pass
@@ -249,6 +273,10 @@ def _llm_select_table(question: str, sims: List[float], *, max_retries: int = 2)
         # Heuristic extraction of table names from free-form text
         extracted = _extract_tables_from_text(content)
         if extracted:
+            try:
+                (dbg_dir / f"table_selector_parsed_attempt{attempt}.json").write_text(json.dumps({"table": extracted}, indent=2), encoding="utf-8")
+            except Exception:
+                pass
             return extracted
 
         if attempt < max_retries:
@@ -262,6 +290,10 @@ def _llm_select_table(question: str, sims: List[float], *, max_retries: int = 2)
     # Final fallback: return top-similarity candidates to avoid pipeline failure
     fallback = [TABLE_NAMES[i] for i in top_idx[: max(1, min(TOP_K, 2))]]
     print("[TableSelector] Falling back to similarity tables:", fallback)
+    try:
+        (dbg_dir / f"table_selector_fallback.json").write_text(json.dumps({"table": fallback}, indent=2), encoding="utf-8")
+    except Exception:
+        pass
     return fallback
 
 # ------------------------------------------------------------------------------

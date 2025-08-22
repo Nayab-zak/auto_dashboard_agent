@@ -1,81 +1,61 @@
 {
   "kpis": [
     {
-      "kpi_name": "TEUs by Trade Type for T2 Terminals",
+      "kpi_name": "Vessels by Shipping Line",
       "chart_type": "bar",
       "required_columns": {
-        "DPW_DL.EDW_VOYAGE_BOX_STAT": [
-          "TYPE",
-          "TEUS"
+        "DPW_DL.DM_LINES": [
+          "LINE_ID",
+          "LINE_NAME"
+        ],
+        "DPW_DL.Voyages": [
+          "LINE_CODE",
+          "ROTN"
         ]
       },
       "table_names": [
-        "DPW_DL.EDW_VOYAGE_BOX_STAT"
+        "DPW_DL.DM_LINES",
+        "DPW_DL.Voyages"
       ],
-      "why": "Assesses container traffic volume by trade type for T2 terminals."
+      "why": "Identifies the number of vessels operated by each shipping line."
     },
     {
-      "kpi_name": "Trade Type Volume Growth Over Time",
-      "chart_type": "line",
-      "required_columns": {
-        "DPW_DL.EDW_VOYAGE_BOX_STAT": [
-          "YEAR_MTH",
-          "TYPE",
-          "TEUS"
-        ]
-      },
-      "table_names": [
-        "DPW_DL.EDW_VOYAGE_BOX_STAT"
-      ],
-      "why": "Tracks changes in trade type volumes over time."
-    },
-    {
-      "kpi_name": "Total TEUs Handled by Trade Type",
-      "chart_type": "pie",
-      "required_columns": {
-        "DPW_DL.EDW_VOYAGE_BOX_STAT": [
-          "TYPE",
-          "TEUS"
-        ]
-      },
-      "table_names": [
-        "DPW_DL.EDW_VOYAGE_BOX_STAT"
-      ],
-      "why": "Highlights the proportion of total TEUs handled by different trade types."
-    },
-    {
-      "kpi_name": "Average TEUs Per Trade Type",
-      "chart_type": "bar",
-      "required_columns": {
-        "DPW_DL.EDW_VOYAGE_BOX_STAT": [
-          "TYPE",
-          "TEUS"
-        ]
-      },
-      "table_names": [
-        "DPW_DL.EDW_VOYAGE_BOX_STAT"
-      ],
-      "why": "Provides insight into the average volume per trade type."
-    },
-    {
-      "kpi_name": "TEUs per Voyage by Trade Type",
+      "kpi_name": "Top 10 Shipping Lines by Vessels",
       "chart_type": "table",
       "required_columns": {
-        "DPW_DL.Voyages": [
-          "ROTN",
-          "VOYAGE_TYPE"
+        "DPW_DL.DM_LINES": [
+          "LINE_ID",
+          "LINE_NAME"
         ],
-        "DPW_DL.EDW_VOYAGE_BOX_STAT": [
-          "ROTN",
-          "TYPE",
-          "TEUS"
+        "DPW_DL.Voyages": [
+          "LINE_CODE",
+          "ROTN"
         ]
       },
       "table_names": [
-        "DPW_DL.Voyages",
-        "DPW_DL.EDW_VOYAGE_BOX_STAT"
+        "DPW_DL.DM_LINES",
+        "DPW_DL.Voyages"
       ],
-      "why": "Details TEU volume by trade type per voyage."
+      "why": "Provides a detailed view of the top 10 shipping lines in terms of vessel count."
+    },
+    {
+      "kpi_name": "Vessel Count Growth Over Time",
+      "chart_type": "line",
+      "required_columns": {
+        "DPW_DL.DM_LINES": [
+          "LINE_ID"
+        ],
+        "DPW_DL.Voyages": [
+          "LINE_CODE",
+          "START_WORK_DATE",
+          "ROTN"
+        ]
+      },
+      "table_names": [
+        "DPW_DL.DM_LINES",
+        "DPW_DL.Voyages"
+      ],
+      "why": "Monitors how the number of vessels operated by each line has changed over time."
     }
   ]
 }

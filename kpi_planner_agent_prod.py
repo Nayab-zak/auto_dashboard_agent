@@ -13,7 +13,8 @@ from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMe
 
 from config import (
     OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_TIMEOUT, LLM_MODEL, KPI_TEMPERATURE,
-    LLM_TOP_P, LLM_PRESENCE_PENALTY, LLM_FREQUENCY_PENALTY, LLM_SAMPLING_TOP_K, LLM_REPETITION_PENALTY
+    LLM_TOP_P, LLM_PRESENCE_PENALTY, LLM_FREQUENCY_PENALTY, LLM_SAMPLING_TOP_K, LLM_REPETITION_PENALTY,
+    STRICT_VALIDATION, DEBUG_DIR
 )
 
 ALLOWED_CHARTS: List[str] = [
@@ -242,7 +243,7 @@ _FEWSHOT_RAW = [
                     "DPW_DL.DM_LINES": ["LINE_ID", "LINE_NAME"]
                 },
                 "table_names": ["DPW_DL.Voyages", "DPW_DL.EDW_VOYAGE_BOX_STAT", "DPW_DL.DM_LINES"],
-                "why": "Tracks volume and line ownership for completed voyages."
+                    "why": "Tracks volume and line ownership for completed voyages."
             },
             {
                 "kpi_name": "Average TEUs per Voyage",
@@ -287,14 +288,38 @@ def _fewshot_messages() -> List[Dict[str, Any]]:
     return msgs
 
 
+def _normalize_name(name: str) -> str:
+    import re
+    return re.sub(r"\W+", " ", (name or "").lower()).strip()
+
+
+def _deduplicate_kpis(kpis: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    seen = set()
+    out: List[Dict[str, Any]] = []
+    for k in kpis:
+        norm = _normalize_name(k.get("kpi_name", ""))
+        if norm and norm not in seen:
+            out.append(k)
+            seen.add(norm)
+    return out
+
+
 def _validate(kpis: List[Dict[str, Any]], schema_dict: Dict[str, List[str]]) -> bool:
-    if not isinstance(kpis, list) or not (3 <= len(kpis) <= 12):
+    if not isinstance(kpis, list):
+        return False
+    kpis = _deduplicate_kpis(kpis)
+    if not (3 <= len(kpis) <= 12):
         return False
 
     normalized_schema = {
         table.lower(): [col.lower() for col in cols]
         for table, cols in schema_dict.items()
     }
+
+    # Enforce unique KPI names
+    names = [_normalize_name(k.get("kpi_name", "")) for k in kpis]
+    if len(names) != len(set(names)):
+        return False
 
     for kpi in kpis:
         if kpi.get("chart_type") not in [
@@ -313,11 +338,18 @@ def _validate(kpis: List[Dict[str, Any]], schema_dict: Dict[str, List[str]]) -> 
             if cols:
                 if not any(str(col).lower() in normalized_schema[tbl_l] for col in cols):
                     return False
+            elif STRICT_VALIDATION:
+                # In strict mode, require at least one column per referenced table
+                return False
 
         # Ensure table_names references are valid
         for tbl in kpi.get("table_names", []):
             if str(tbl).lower() not in normalized_schema:
                 return False
+            if STRICT_VALIDATION:
+                # In strict mode, ensure a required column is declared for each table in table_names
+                if not any(str(tbl).lower() == str(t).lower() for t in required_columns.keys()):
+                    return False
 
     return True
 
@@ -353,30 +385,41 @@ def _validation_errors(kpis: List[Dict[str, Any]], schema_dict: Dict[str, List[s
     errs: List[str] = []
     if not isinstance(kpis, list):
         return ["kpis is not a list"]
+    # Dedup first to reflect actual checks
+    kpis = _deduplicate_kpis(kpis)
     if not (3 <= len(kpis) <= 12):
         errs.append(f"kpis count {len(kpis)} is outside 3–12")
 
     normalized_schema = {t.lower(): {c.lower() for c in cols} for t, cols in schema_dict.items()}
 
-    for i, kpi in kpis:
+    # Check unique names
+    names = [_normalize_name(k.get("kpi_name", "")) for k in kpis]
+    if len(names) != len(set(names)):
+        errs.append("kpi names contain duplicates or near-duplicates")
+
+    for i, kpi in enumerate(kpis):
         ct = kpi.get("chart_type")
         if ct not in ["bar", "line", "area", "pie", "table", "metric", "gauge", "heatmap", "scatter", "histogram"]:
             errs.append(f"kpi[{i}].chart_type '{ct}' not in allowed list")
         rc = kpi.get("required_columns", {})
         if not isinstance(rc, dict):
             errs.append(f"kpi[{i}].required_columns is not an object")
-            continue
-        for tbl, cols in rc.items():
-            tl = str(tbl).lower()
-            if tl not in normalized_schema:
-                errs.append(f"kpi[{i}].required_columns references unknown table '{tbl}'")
-                continue
-            if cols:
-                if not any(str(col).lower() in normalized_schema[tl] for col in cols):
-                    errs.append(f"kpi[{i}] none of required columns exist in table '{tbl}': {cols}")
+        else:
+            for tbl, cols in rc.items():
+                tl = str(tbl).lower()
+                if tl not in normalized_schema:
+                    errs.append(f"kpi[{i}].required_columns references unknown table '{tbl}'")
+                    continue
+                if cols:
+                    if not any(str(col).lower() in normalized_schema[tl] for col in cols):
+                        errs.append(f"kpi[{i}] none of required columns exist in table '{tbl}': {cols}")
+                elif STRICT_VALIDATION:
+                    errs.append(f"kpi[{i}] requires at least one column for table '{tbl}' in strict mode")
         for tbl in kpi.get("table_names", []):
             if str(tbl).lower() not in normalized_schema:
                 errs.append(f"kpi[{i}].table_names references unknown table '{tbl}'")
+            elif STRICT_VALIDATION and not any(str(tbl).lower() == str(t).lower() for t in rc.keys()):
+                errs.append(f"kpi[{i}] must declare required_columns for table '{tbl}' in strict mode")
     return errs
 
 
@@ -404,7 +447,7 @@ def plan_kpis(question: str, tables: List[str], max_retries: int = 2) -> List[Di
     )
 
     messages = base_messages.copy()
-    debug_dir = _BASE_DIR / "debugg"
+    debug_dir = _BASE_DIR / DEBUG_DIR
     debug_dir.mkdir(parents=True, exist_ok=True)
     last_errors: List[str] = []
 
@@ -440,9 +483,11 @@ def plan_kpis(question: str, tables: List[str], max_retries: int = 2) -> List[Di
             content_json = content[start:end+1] if start != -1 and end != -1 and end > start else content
             parsed = json.loads(content_json)
             kpis = parsed.get("kpis", [])
+            # dedup early for stability
+            kpis = _deduplicate_kpis(kpis)
             # persist parsed per attempt
             try:
-                (debug_dir / f"kpi_parsed_attempt{attempt}.json").write_text(json.dumps(parsed, ensure_ascii=False, indent=2), encoding="utf-8")
+                (debug_dir / f"kpi_parsed_attempt{attempt}.json").write_text(json.dumps({"kpis": kpis}, ensure_ascii=False, indent=2), encoding="utf-8")
             except Exception:
                 pass
         except Exception:
@@ -458,7 +503,7 @@ def plan_kpis(question: str, tables: List[str], max_retries: int = 2) -> List[Di
             messages.append({
                 "role": "assistant",
                 "content": (
-                    "❌ Validation failed: Provide 3–12 KPIs as JSON {\"kpis\": [...]}. Use only listed tables/columns."
+                    "❌ Validation failed: Provide 3–12 deduplicated KPIs as JSON {\"kpis\": [...]}. Use only listed tables/columns."
                 )
             })
 

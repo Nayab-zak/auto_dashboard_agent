@@ -1,1 +1,1 @@
-KPI planning failed: LLM failed to produce a valid KPI list.
+KPI planning failed: too many values to unpack (expected 2)
