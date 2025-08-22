@@ -1,0 +1,10 @@
+openai
+python-dotenv
+pandas
+numpy
+Flask
+streamlit
+sentence-transformers>=2.2.2
+transformers>=4.41.0
+# CPU-only torch; if you have CUDA, install the matching wheel manually
+torch>=2.1.0

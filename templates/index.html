@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>InsightGenie • DP World</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    :root{
+      --primary:#1e1450;
+      --primary-hover:#291c6f;
+      --accent:#28c76f;
+      --accent-soft:#e8f7ef;
+      --bg:#f7f9fc;
+      --bg-dark:#121212;
+      --text:#1f2937;
+      --text-dark:#e5e7eb;
+      --radius:10px;
+      --ease:.25s cubic-bezier(.4,0,.2,1);
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+
+    body{
+      font-family:Inter,system-ui,sans-serif;
+      background:var(--bg);
+      color:var(--text);
+      display:flex;flex-direction:column;min-height:100vh;
+      transition:background var(--ease),color var(--ease);
+    }
+    body.dark{background:var(--bg-dark);color:var(--text-dark)}
+
+    /* Header */
+    header{
+      background:var(--primary);
+      padding:.75rem 2rem;
+      display:flex;align-items:center;gap:1rem;
+      color:#fff;
+    }
+    header img{height:38px;width:auto}
+    header h1{font-size:1.25rem;font-weight:600;letter-spacing:.2px}
+
+    /* Main */
+    main{flex:1;display:flex;flex-direction:column;align-items:center;padding:3rem 1rem}
+    .wrapper{width:100%;max-width:960px}
+
+    .tagline{
+      font-size:1.15rem;font-weight:500;color:#4b5563;text-align:center;margin-bottom:2rem
+    }
+
+    /* Search */
+    .search-box{
+      display:flex;
+      gap:1.25rem;
+      width:100%;
+      align-items: center; /* Align items vertically in the center */
+      justify-content: center; /* Center the input and button horizontally */
+    }
+
+    .search-input-wrapper { /* New wrapper for input and mic */
+      position: relative;
+      flex: 1; /* Allows the input dfwrapper to take available space */
+    }
+
+    .search-input{
+      width:100%;
+      padding:1.25rem 3.5rem 1.25rem 1.5rem; /* Increased right padding for microphone */
+      font-size:1.05rem;border:1px solid #d1d5db;border-radius:var(--radius);
+      background:#fff;box-shadow:0 2px 4px rgb(0 0 0 /.04);
+      transition:border var(--ease),box-shadow var(--ease);
+    }
+    .search-input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 4px rgb(30 20 80 /.25)}
+    body.dark .search-input{background:#272727;border-color:#3d3d3d;color:var(--text-dark)}
+
+    .btn{
+      width:230px;padding:1.25rem 0;font-size:1.05rem;font-weight:600;color:#fff;background:var(--primary);
+      border:none;border-radius:var(--radius);cursor:pointer;transition:background var(--ease),transform .15s;
+    }
+    .btn:hover{background:var(--primary-hover)}
+    .btn:active{transform:translateY(1px)}
+
+    /* Microphone button (inside input) --------------------------- */
+
+/* Microphone button (inside input) --------------------------- */
+    #microphone-icon { /* Now uses the ID for styling the button itself */
+      position:absolute;
+      top:50%;
+      right:1.25rem; /* Adjust this value to control how far from the right edge it is. */
+                      /* 1.25rem should align it with your input's padding. */
+      transform:translateY(-50%);
+      width:32px; /* Set dimensions for the button itself */
+      height:32px; /* Set dimensions for the button itself */
+      display:flex; /* Use flexbox to center the image inside the button */
+      align-items:center;
+      justify-content:center;
+      background:none;
+      border:none;
+      padding:0;
+      cursor:pointer;
+      z-index: 10; /* Ensure it's above the input field */
+    }
+
+    #microphone-icon img { /* Targeting the image inside the button */
+      width:24px; /* Set size of the image */
+      height:24px; /* Set size of the image */
+      /* Filter to match var(--primary) color or a dark grey */
+      filter: invert(10%) sepia(20%) saturate(1000%) hue-rotate(220deg) brightness(80%) contrast(100%); 
+      transition: filter var(--ease);
+    }
+    #microphone-icon.listening img { /* Use .listening class applied to the button itself */
+      /* Filter to match var(--accent) color */
+      filter: invert(49%) sepia(89%) saturate(2768%) hue-rotate(165deg) brightness(94%) contrast(88%);
+    }
+    body.dark #microphone-icon img {
+      filter: invert(1) brightness(0.8); /* Adjust for dark mode visibility */
+    }/* Microphone button (inside input) --------------------------- */
+    #microphone-icon { /* Now uses the ID for styling the button itself */
+      position:absolute;
+      top:50%;
+      right:1.25rem; /* Adjust this value to control how far from the right edge it is. */
+                      /* 1.25rem should align it with your input's padding. */
+      transform:translateY(-50%);
+      width:32px; /* Set dimensions for the button itself */
+      height:32px; /* Set dimensions for the button itself */
+      display:flex; /* Use flexbox to center the image inside the button */
+      align-items:center;
+      justify-content:center;
+      background:none;
+      border:none;
+      padding:0;
+      cursor:pointer;
+      z-index: 10; /* Ensure it's above the input field */
+    }
+
+    #microphone-icon img { /* Targeting the image inside the button */
+      width:24px; /* Set size of the image */
+      height:24px; /* Set size of the image */
+      /* Filter to match var(--primary) color or a dark grey */
+      filter: none;
+      transition: filter var(--ease);
+    }
+    #microphone-icon.listening img { /* Use .listening class applied to the button itself */
+      /* Filter to match var(--accent) color */
+      filter: none;
+    }
+    body.dark #microphone-icon img {
+      filter: invert(1) brightness(0.8); /* Adjust for dark mode visibility */
+    }
+
+    /* Suggestions */
+    .suggestions{
+      display: flex; /* Changed from grid to flex for simpler alignment with gap */
+      justify-content: center; /* Center items horizontally */
+      flex-wrap: wrap; /* Allow items to wrap to the next line */
+      gap:1.25rem; /* Space between suggestion boxes */
+      margin:2.25rem 0 2rem;
+    }
+    .suggestion{
+      padding:1.25rem 1rem;border-radius:var(--radius);background:#fff;border:1px solid #e5e7eb;
+      font-size:.9rem;font-weight:500;text-align:center;cursor:pointer;transition:all var(--ease);
+      flex: 1 1 280px; /* Allows flexibility for responsiveness, minimum 280px width */
+      max-width: 32%; /* Approx. 3 per row on larger screens, adjust as needed */
+      white-space: nowrap; /* Keep text on one line */
+      overflow: hidden; /* Hide overflow if text is too long */
+      text-overflow: ellipsis; /* Add ellipsis if text is too long */
+    }
+    .suggestion:hover{border-color:var(--primary);box-shadow:0 3px 8px rgb(0 0 0 /.08);transform:translateY(-2px)}
+    body.dark .suggestion{background:#272727;border-color:#3d3d3d}
+
+    /* Progress */
+    .progress-wrapper{height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden}
+    .progress-bar{height:100%;width:0;background:var(--primary);transition:width var(--ease)}
+
+    /* Result */
+    #result{
+      margin:2rem 0 0;
+      display:none; 
+      align-items:center;gap:.75rem;flex-wrap:wrap;
+      background:#fff;border:1px solid #d1d5db;border-radius:var(--radius);
+      padding:1rem;box-shadow:0 2px 6px rgb(0 0 0 /.06);
+    }
+    #result a{color:var(--primary);font-weight:600;word-break:break-all;text-decoration:none}
+    .copy-btn{
+      background:var(--accent-soft);color:var(--accent);border:none;border-radius:var(--radius);
+      padding:.5rem 1rem;font-size:.85rem;cursor:pointer;transition:background var(--ease)
+    }
+    .copy-btn:hover{background:#d4f0e1}
+    body.dark #result{background:#272727;border-color:#3d3d3d}
+
+    /* Footer */
+    footer{
+      margin-top:auto;padding:1rem;text-align:center;font-size:.8rem;color:#6b7280;background:#fff;
+    }
+    body.dark footer{background:#1a1a1a}
+
+    /* Dark-mode toggle */
+    .toggle{position:fixed;top:1rem;right:1rem;background:none;border:none;font-size:1.25rem;cursor:pointer}
+
+    @media(max-width:800px){
+      /* For suggestions, let flexbox handle wrapping without a fixed grid column count */
+      .suggestion {
+        max-width: 48%; /* Two per row for medium screens */
+      }
+    }
+    @media(max-width:640px){
+      .search-box{flex-direction:column}
+      .btn{width:100%}
+      .suggestion {
+        max-width: 100%; /* One per row on small screens */
+      }
+    }
+    @media(prefers-reduced-motion:reduce){*{transition:none!important}}
+  </style>
+</head>
+<body>
+  <button class="toggle" aria-label="Toggle dark mode">🌙</button>
+
+  <header>
+    <img src="https://dpwprod.azureedge.net/-/media/project/dpwg/dpwg-tenant/shared/images/logo-new.svg?rev=da9e60c8636540e2b610ebc22c776f6b&h=35&w=157&la=en&hash=84A509508F1ED341DC3ABB6BBD04FE02" alt="DP World">
+    <h1>InsightGenie</h1>
+  </header>
+
+  <main>
+    <div class="wrapper">
+      <p class="tagline">Ask your data anything..</p>
+
+      <form id="qform" class="search-box" autocomplete="off">
+        <div class="search-input-wrapper">
+          <input id="query" name="query" required class="search-input"
+                placeholder="e.g. Show count of vessels coming for each operator throughout the years" aria-label="Analytics question">
+          <button type="button" id="microphone-icon" aria-label="Start voice input">
+            <img src="{{ url_for('static', filename='mic_icon.png') }}" alt="Microphone">
+          </button>
+        </div>
+        <button class="btn">Generate Dashboard</button>
+      </form>
+
+
+      <div class="suggestions" aria-label="Quick KPI examples">
+        <div class="suggestion">TEUS Handled For Completed Vessels</div>
+        <div class="suggestion">Top 10 Shipping Lines Based On Vessel Count</div>
+        <div class="suggestion">Average Turn Around Time for Shipping Lines</div>
+      </div>
+
+      <div class="progress-wrapper" aria-hidden="true">
+        <div class="progress-bar" id="bar"></div>
+      </div>
+      <div id="error-message" style="display:none;color:#b91c1c;margin-top:1rem;text-align:center;font-weight:500;">
+  <!-- Error messages will be shown here -->
+      </div>
+
+      <div id="result" role="status" aria-live="polite"> 
+        <a id="link" target="_blank" rel="noopener">Launch Insights</a> 
+        <button class="copy-btn" id="copyBtn" aria-label="Copy link">Copy</button> 
+      </div>
+    </div>
+  </main>
+
+  <footer>&copy; <script>document.write(new Date().getFullYear())</script> DP World. All rights reserved.</footer>
+
+  <script>
+  (function(){
+    const body=document.body;
+    const toggle=document.querySelector('.toggle');
+    const prefersDark=window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if(prefersDark) body.classList.add('dark');
+    toggle.addEventListener('click',()=>body.classList.toggle('dark'));
+
+    const form=document.getElementById('qform');
+    const input=document.getElementById('query');
+    const bar=document.getElementById('bar');
+    const result=document.getElementById('result');
+    const linkEl=document.getElementById('link');
+    const copyBtn=document.getElementById('copyBtn');
+    const suggestions=document.querySelectorAll('.suggestion');
+    const micBtn = document.getElementById('microphone-icon'); // Get the microphone button by ID
+    const errorBox = document.getElementById('error-message');
+
+    /* quick-fill */
+    suggestions.forEach(el=>el.addEventListener('click',()=>{input.value=el.textContent.trim();input.focus();}));
+
+    /* copy */
+    copyBtn.addEventListener('click',()=>{
+      navigator.clipboard.writeText(linkEl.href).then(()=>{
+        copyBtn.textContent='Copied!';
+        setTimeout(()=>copyBtn.textContent='Copy',2000);
+      });
+    });
+
+    /* Microphone functionality (basic placeholder) */
+    if (micBtn && 'webkitSpeechRecognition' in window) {
+      const SpeechRecognition = window.webkitSpeechRecognition;
+      const recognition = new SpeechRecognition();
+
+      recognition.continuous = false; // Stop after one utterance
+      recognition.lang = 'en-US'; // Set language
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      micBtn.addEventListener('click', () => {
+        micBtn.classList.add('listening');
+        input.value = ''; // Clear previous input
+        input.focus();
+        recognition.start();
+      });
+
+      recognition.onresult = (event) => {
+        const transcript = event.results[0][0].transcript;
+        input.value = transcript;
+        micBtn.classList.remove('listening');
+      };
+
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error', event.error);
+        micBtn.classList.remove('listening');
+        alert('Speech recognition failed: ' + event.error);
+      };
+
+      recognition.onend = () => {
+        micBtn.classList.remove('listening');
+      };
+    } else if (micBtn) {
+      // Hide microphone button if not supported
+      micBtn.style.display = 'none';
+      console.warn('Web Speech API not supported in this browser.');
+    }
+
+
+    /* submit */
+  form.addEventListener('submit',async e=>{
+    if(!window.fetch) return; 
+    e.preventDefault();
+
+    const q=input.value.trim();
+    if(!q) return;
+
+    // ✨ Reset UI
+    bar.style.width='0%';
+    result.style.display='none';
+    errorBox.style.display='none';
+    errorBox.textContent = '';
+    bar.style.background = getComputedStyle(document.documentElement).getPropertyValue('--primary');
+
+    /* fake initial progress */
+    bar.style.width='25%';
+
+    try{
+      const resp=await fetch('/api/generate',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({query:q})
+      });
+      const data=await resp.json();
+
+      if(!resp.ok) throw new Error(data.error||'Unexpected error');
+
+      bar.style.width='100%';
+
+      // ✨ show result section
+      linkEl.href=data.url;
+      result.style.display='flex';
+      window.open(data.url,'_blank','noopener');
+    }catch(err){
+      bar.style.width='100%';
+      bar.style.background=getComputedStyle(document.documentElement).getPropertyValue('--accent');
+
+      // ✨ Show inline error message
+      errorBox.textContent = err.message;
+      errorBox.style.display = 'block';
+    }
+  });
+})();
+  </script>
+</body>
+</html>
